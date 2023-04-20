@@ -1,0 +1,954 @@
+---
+title: "Project 1: Using OLS regression for predicting life expectancy"
+author: "Benodivskaya Yulia (BSC-203), Bogosyan Larisa (BSC-202), Dymova Polina (BSC-201), Tedikova Anna (BSC-201)"
+date: "2023-04-06"
+output:
+  html_document:
+    df_print: paged
+    theme: flatly
+    highlight: pygments
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    code_folding: hide
+---
+
+<style>
+h1.title {
+  background-color: #F5FFFA;
+}
+body {
+  background-color: #F5FFFA;
+}
+pre {
+  background-color: #E6E6FA;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align='center')
+
+library(foreign)
+library(rmarkdown)
+library(dplyr)
+library(tidyr)
+library(psych)
+library(ggplot2)
+library(ggpubr)
+library(car)
+library(nortest)
+library(MASS)
+library(stargazer)
+library(sjPlot)
+```
+
+# 1. Data
+
+For this project we decided to take the [dataset on life expectancy from the Kaggle website](<https://www.kaggle.com/datasets/kumarajarshi/life-expectancy-who?resource=download>). It describes health statuses as well as many other related factors for all countries for years 2000-2015. It was originally collected from the WHO and United Nations website. The chosen dataset consists of 193 unique values (country names), 22 columns and 2938 rows which means there are 20 predicting variables with life expectancy as the target.
+
+The usage of the linear regression is suitable in our research because our target variable, which we are aimed to predict, is numeric (life expectancy in years).  This variable is dependent on the certain factors that we have considered and justified their usage in our literature review. In our case there exists a linear relationship between the response variable and the explanatory variables, thus linear regression will be the most appropriate and effective. 
+
+So, initially our dataset looked this way:
+
+```{r}
+data_all <- read.csv("D:/Life Expectancy Data.csv")
+paged_table(data_all) %>% head()
+```
+
+In order to get rid of variables that won't be used in our research and of missing values (NAs), we created new dataset to work with, including the following variables:
+
+1. Status - Developed or Developing status.
+
+2. Total expenditure - General government expenditure on health as a percentage of total government expenditure (%).
+
+3. Schooling - Number of years of Schooling(years).
+
+4. Alcohol - Alcohol, recorded per capita (15+) consumption (in litres of pure alcohol).
+
+5. Life expectancy - the average number of years a person is expected to live.
+
+Control variable: GDP - Gross Domestic Product per capita (in USD).
+
+The new dataset contains 2323 observations.
+
+```{r, warning=FALSE}
+data <- data_all %>% dplyr::select(Life.expectancy, Status, Total.expenditure, Schooling, Alcohol, GDP) %>% drop_na()
+paged_table(data) %>% head()
+```
+
+# 2. RQs, literature, hypotheses
+
+## 2.1 Research question(s)
+
+**RQ1**: How socio-economic factors are related to life expectancy, having GDP as a control variable?
+
+**RQ2**: What socio-economic factor(s) moderate(s) the relationship between another factor and life expectancy, if any?
+
+## 2.2 Literature review
+
+* **Control variables**
+
+Numerous studies have been conducted on life expectancy. We have noticed that most of them include GDP per capita in their analyses (Miladinov, 2020; Chen, Ma, Hua, Wang, & Guo, 2021; Zaman, Hossain, Mehta, Sharmin, & Mahmood, 2017) so we decided to include it in our analysis as well and use it as the control variable - it is not our main interest but can still influence the result.
+
+Moreover, the study by Miladinov (2020) investigates life expectancy at birth in five EU accession candidate countries (Macedonia, Serbia, Bosnia and Herzegovina, Montenegro, and Albania). They used an aggregate time series pool data on an annual level from UN and World Bank databases for the period 1990–2017 and built a Full Information Maximum Likelihood model. The results indicated that GDP per capita has a positive relationship to life expectancy at birth. We will take this study’s results as our hypothesis.
+
+Another common predictor was gender, especially used in interaction with other variables such as alcohol consumption (Östergren, Martikainen, Tarkiainen, et al, 2019; Östergren, Martikainen & Lundberg, 2018; Kossova, Kossova & Sheluntsova, 2017) and schooling (Östergren, Martikainen & Lundberg, 2018). However, our dataset does not contain such a variable so we could not use it as a predictor or a control variable.
+
+* **Status**
+
+The predictors we chose were also commonly used in research on life expectancy, which is our outcome variable. Furthermore, those variables have shown mixed or interesting results and thus we would like to focus on them as main predictors and see how they will perform for our dataset.
+
+The first predictor we have picked is “Status” which indicates the level of socio-economic development of a country. 
+
+A study from Girum, Muktar & Shegaze (2018) combined data on 83 countries with low and medium development status and built a linear regression model on healthcare and socio-economic factors of life expectancy. The results showed that life expectancy was quite low in the studied countries and the relationship between development status and life expectancy was strong and positive. Therefore, we are going to verify it.
+
+* **Healthcare**
+
+The second predictor is “Total expenditure”, showing the general government expenditure on health as a percentage of total government expenditure.
+
+As for it relation to life expectancy, Mondal & Shitan (2013) found a positive relationship between healthcare resources and life expectancy. However, this study did not account for the government’s input into healthcare. 
+
+Later studies have covered this issue. For instance, Jakovljevic, Vukovic & Fontanesi (2016) explored long-term health expenditure and longevity (life expectancy) trends across three major sub-regions of Eastern Europe since 1989. The results showed that by 2012 the revenue spent on healthcare was roughly linear to additional life-year expectancies.
+
+In another study (van den Heuvel & Olaroiu, 2017) the researchers performed regression analysis on healthcare expenditures and life expectancy and the results showed that the relationship between them is present but not great. Later, Zaman, Hossain, Mehta, Sharmin, & Mahmood (2017) have also found that there was no significant relationship between total health expenditure and increased life expectancy. 
+
+We can see that the results are overall mixed, so we would like to check the relationship based on our data. 
+
+* **Schooling**
+
+The third predictor is “Schooling” that indicates the number of years of schooling average for a certain country. 
+Some studies have analyzed schooling years as an outcome of life expectancy. Echevarría (2007) analyzed the relationship between life expectancy and education time. It was found that increases in life expectancy gave rise to higher education spans.
+
+Some later studies have studied variables similar to schooling years in content. Novak & Trunk (2016) investigated how life expectancy is related to a country's education level using multiple regression analysis on data from 187 countries. It was confirmed that a country's education level is an important determinant of life expectancy at birth. The study by Girum, Muktar,  & Shegaze (2018) also showed that life expectancy is positively related to adult literacy rate.
+
+Some studies have found a connection between schooling and life expectancy as a correlation. Hazan (2012) has proven that the change in life expectancy at birth between 1960 and 1990 was positively correlated with percentage change in schooling. Finally, Kim & Kim (2016) have found significant positive correlations between life expectancy and mean years of schooling (r = 0.756, p = 0.001) using data on 178 countries from 2000 to 2012. 
+
+* **Alcohol**
+
+The fourth and final predictor is “Alcohol” which indicates an alcohol consumption per capita for people older than fifteen years in liters of pure alcohol.
+
+Kossova, Kossova and Sheluntsova (2017) have studied alcohol consumption and life expectancy in Russia and have found a negative relationship between the variables. This result was supported by the study of van den Heuvel & Olaroiu (2017). Östergren O, Martikainen P, Tarkiainen L, et al (2019) have studied life expectancy between Nordic countries. It has been found that between-country differences in life expectancy can be largely attributed to differences in alcohol consumption. 
+
+* **Interaction**
+
+We have also found studies that suggest interaction effects between some of our predictors.
+
+To start with, Rogers & Wofford (1989) studied 95 less developed countries and results indicated that mortality is primarily influenced by education. From this study we can suggest an interaction effect between schooling and development status.
+
+Secondly, Zaman, Hossain, Mehta, Sharmin, & Mahmood (2017) discovered that there is a direct relationship between GDP and total health expenditure. From this study we can suggest an interaction effect between GDP and total expenditure.
+
+Thirdly, Östergren, O., Martikainen, P. & Lundberg, O. (2018) have found that alcohol consumption contributed to educational differences in life expectancy. Based on the study we can suggest an interaction effect between alcohol and schooling.
+
+Moreover, another study (Chen, Ma, Hua, Wang, & Guo, 2021) was conducted on life expectancy factors in developed and developing countries from 2004 to 2016. The results showed that GDP per capita is positively related to LE in developed countries; however, it has a negative relationship to LE in developing countries. In developed countries GDP per capita also has the biggest positive impact on LE. From this study we can suggest an interaction effect between GDP and development status.
+
+And lastly, Chen, Ma, Hua, Wang, & Guo (2021) have found out that current healthcare expenditures per capita are negatively related to LE in developed countries, and there is no significant relationship to LE in developing countries. According to this research, one may suppose an interaction effect between total expenditure and development status.
+
+## 2.3 Hypotheses
+
+Based on the scientific literature we have analysed in the field of our research, we can pose the following hypothesis both for the relationship between predictors and the outcome, and for the interaction effect we're going to add to the linear model.
+
+**For predictors-outcome relationship:**
+
+H1: The countries with Status “Developed” will have higher Life expectancy compared to countries with Status “Developing”.
+
+H2: The relationship of Total expenditure and Life expectancy will be positive and moderate.
+
+H3: The relationship of Schooling and Life expectancy will be positive and strong.
+
+H4: The relationship of Alcohol and Life expectancy will be negative and moderate.
+
+**For the interaction effect:**
+
+H5: The relationship of Status and Life expectancy is moderated by Schooling.
+
+H6: The relationship of Total expenditure and Life expectancy is moderated by GDP.
+
+H7: The relationship of Schooling and Life expectancy is moderated by Alcohol.
+
+H8: The relationship of GDP and Life expectancy is moderated by Status.
+
+H9: The relationship of Total expenditure and Life expectancy is moderated by Status.
+
+
+# 3. Explorative Data Analysis
+
+## 3.1 Variables of choice description
+
+Before analyzing the data, we should find out the characteristic features of the variables in order to dive deeper in understanding of the possible 'behavior' our data may have during the Linear Regression.
+
+Therefore, firstly, we are going to observe each variable's class and structure, distribution of continuous variables, as well as *the three most common measures of central tendency (the mean, median, and mode)*, which is a summary statistic that could help us in identifying if a distribution is normal or not.
+
+### 3.1.1 Life expectancy - outcome valiable
+
+Our dependent variable has **numeric** class, and as it represents the average age of population, this class was left unmodified. Though, the values were rounded to the whole number for convenience in the subsequent analysis.
+
+```{r}
+class(data$Life.expectancy)
+data$Life.expectancy = round(data$Life.expectancy, digits = 0)
+```
+
+Observing properties of the predictor, we could state that **it is distributed rather normally**, which is identified by similar values of its mean (69.3), median (72) and mode (74). Moreover, the skew (-0.66) shows that the distribution is moderately skewed - in our case, it is left-skewed, as the value < 0. This is also noticeable on the histogram. 
+
+```{r}
+mode <- function(Life.expectancy) {  #creating mode function
+uniqv <- unique(Life.expectancy) 
+uniqv[which.max(tabulate(match(Life.expectancy, uniqv)))] }
+
+describeBy(data$Life.expectancy) %>% mutate(mode = mode(data$Life.expectancy))
+```
+
+```{r, warning=FALSE}
+ggplot(data, aes(x = Life.expectancy)) +
+  geom_histogram(fill="steelblue1",color="black", binwidth = 4.5) +
+  theme_bw() +
+  labs(title = "Life expectancy in years", x = "Life expectancy", y = "Frequency")
+```
+
+### 3.1.2 Status - predictor variable
+
+This independent variable initially had been coded as character, and was modified to a **factor** for a better usability during linear regression.
+
+```{r}
+data$Status <- as.factor(data$Status)
+class(data$Status)
+```
+
+Ultimately, the variable had 2 levels: `developed` (420 obs.) and `developing` (1903 obs.). It represents the number of developed and developing countries in different years, having a possibility of each country to have different status in different years. 
+
+Thus, we could conclude that there are in about 4.5 times more observations with developing status, compared to the developed ones.
+
+```{r}
+table(data$Status)
+
+ggplot(data, aes(x = Status)) +
+  geom_bar(fill="steelblue",color="black") +
+  theme_bw() +
+  labs(title = "Status of development", x = "Status", y = "Count")
+```
+
+### 3.1.3 Total expenditure - predictor variable
+
+This independent variable initially had **numeric** class, and was left as it is. The only change made to it was rounding the values to the whole number.
+
+```{r}
+class(data$Total.expenditure)
+data$Total.expenditure = round(data$Total.expenditure, digits = 0)
+```
+
+It can be stated that **distribution of this numeric variable is normal**, as its mean (5.86), median (6) and mode (6) have the same values, and its skew (0.23) identifies that the distribution is fairly symmetrical, being in the threshold of -0.5 to 0.5. 
+
+```{r}
+mode <- function(Total.expenditure) {  #creating mode function
+uniqv <- unique(Total.expenditure) 
+uniqv[which.max(tabulate(match(Total.expenditure, uniqv)))] }
+
+describeBy(data$Total.expenditure) %>% mutate(mode = mode(data$Total.expenditure))
+```
+
+```{r}
+ggplot(data, aes(x = Total.expenditure)) +
+  geom_histogram(bins = 11, fill="steelblue2",color="black") + #!!!!!!!!!!!!!!!!
+  theme_bw() +
+  labs(title = "General government expenditure on health (%)", x = "Total expenditure", y = "Frequency")
+```
+
+### 3.1.4 Schooling - predictor variable
+
+The third feature variable had the class **numeric**, which remained unchanged. The values of it were rounded to the whole number.
+
+```{r}
+class(data$Schooling)
+data$Schooling = round(data$Schooling, digits = 0)
+```
+
+The values of mean (12.05), median (12) and mode (12) coincide and the skew of variable's distribution (-0.48) meaning that the observations are distributed quite symmetrically. Therefore, we may say that **this distribution corresponds to the definition of a normal one**.
+
+```{r, warning=FALSE}
+mode <- function(Schooling) {  #creating mode function
+uniqv <- unique(Schooling) 
+uniqv[which.max(tabulate(match(Schooling, uniqv)))] }
+
+describeBy(data$Schooling) %>% mutate(mode = mode(data$Schooling))
+```
+
+```{r}
+ggplot(data, aes(x = Schooling)) +
+  geom_histogram(binwidth=2, fill="steelblue3",color="black") +
+  theme_bw() +
+  labs(title = "Number of years of Schooling", x = "Schooling", y = "Frequency")
+```
+
+
+### 3.1.5 Alcohol - predictor variable
+
+The last predictor has **numeric** class, and had its values rounded just like the other variables.
+
+```{r}
+class(data$Alcohol)
+data$Alcohol = round(data$Alcohol, digits = 0)
+```
+
+Here, the mean (4.58), median (4) and mode (0) are not identical, which reflects patterns of non-normal distribution. Looking at the skew (0.58), it may be stated that the variable's distribution is moderately skewed, and more precisely, it is right skewed.
+
+```{r}
+mode <- function(Alcohol) {  #creating mode function
+uniqv <- unique(Alcohol) 
+uniqv[which.max(tabulate(match(Alcohol, uniqv)))] }
+
+describeBy(data$Alcohol) %>% mutate(mode = mode(data$Alcohol))
+```
+
+```{r}
+ggplot(data, aes(x = Alcohol)) +
+  geom_histogram(binwidth=3, fill="steelblue1",color="black") +
+  theme_bw() +
+  labs(title = "Alcohol per capita consumption (in litres of pure alcohol)", x = "Alcohol", y = "Frequency")
+```
+
+### 3.1.6 GDP - control variable
+
+Finally, there is `GDP` variable which is not a variable of interest in our study, but it is controlled for because it could influence the outcomes. It is a **numeric** variable, which values have been rounded and divided by 1000 in order to obtain GDP coefficients in thousands of USD, rather than in just dollars.
+
+```{r}
+class(data$GDP)
+data$GDP = round(data$GDP, digits = 0) / 1000
+```
+
+Looking at the feature's CTM we see that the mean (0), the median (0) and the mode (0) have the same values, which corresponds to the features of normal distribution. According to the skew (3.18) the distribution is highly skewed to the right. From these indicators it follows that **the variable has not really normal distribution, but has some features of it**.
+
+```{r}
+mode <- function(GDP) {  #creating mode function
+uniqv <- unique(GDP) 
+uniqv[which.max(tabulate(match(GDP, uniqv)))] }
+
+describeBy(data$GDP) %>% mutate(mode = mode(data$GDP))
+```
+
+```{r}
+ggplot(data, aes(x = GDP)) +
+  geom_histogram(fill="steelblue4",color="black", bins = 6) +
+  theme_bw() +
+  labs(title = "Gross Domestic Product per capita (in thousands of USD)", x = "GDP", y = "Frequency")
+```
+
+After all the manipulations with the variables chosen for analysis are done, our dataset looks the following way:
+
+```{r}
+paged_table(data) %>% head()
+```
+
+
+## 3.2 Descriptive statistics
+
+Finally, the last thing that should be done before implying Regression Analysis is looking at the relationships between the dependent variable and each independent variable using descriptive statistics methods.
+
+We will implement t-test to the `Status` variable and our outcome variable, as this predictor is a categorical one with 2 levels.
+
+```{r}
+t.test(data$Life.expectancy ~ data$Status)
+```
+
+According to the Welch Two Sample t-test, the there is a statistically significant difference between the groups (p-value < 2.2e-16), and the mean for developed countries > the mean for developing ones. Therefore, we may claim that developed countries have higher life expectancy than the developing ones.
+
+To find out the relationship of life expectancy with the other predictors, we should apply correlation test to each of the pairs. Firstly, let us look at the correlation between `Life expectancy` and `Total expenditure`.
+
+```{r, message = FALSE}
+cor.test(data$Life.expectancy, data$Total.expenditure)
+
+ggplot(data, aes(x = Total.expenditure, y = Life.expectancy)) +
+  geom_point(alpha=0.5, position = "jitter") +  theme_bw() +
+  geom_smooth(method = lm)
+```
+
+According to Pearson's product-moment correlation test, there is a **statistically significant low positive correlation between total government expenditure on health and life expectancy** (cor = 0.18). The plot also depicts a weak upnhill slope with positive linear relationship between the variables.
+
+Secondly, we'll review the relationship between `Life expectancy` and `Schooling`.
+
+```{r, message = FALSE}
+cor.test(data$Life.expectancy, data$Schooling)
+
+ggplot(data, aes(x = Schooling, y = Life.expectancy)) +
+  geom_point(alpha=0.5, position = "jitter") +  theme_bw() +
+  geom_smooth(method = lm)
+```
+
+Based on the results of the test, it may be stated that **statistically significant strong positive correlation between years of schooling and life expectancy** (cor = 0.75), which is statistically significant. The plot also depicts a strong upnhill slope with positive linear relationship between the variables.
+
+Next let us see the correlation between `Life.expectancy` and `Alcohol`.
+
+```{r, message = FALSE}
+cor.test(data$Life.expectancy, data$Alcohol)
+
+ggplot(data, aes(x = Alcohol, y = Life.expectancy)) +
+  geom_point(alpha=0.5, position = "jitter") +  theme_bw() +
+  geom_smooth(method = lm)
+```
+
+As the p-value of the test < 0.05, we can reject the null hypothesis and claim that the true correlation between the variables is not equal to 0. In our case, **there is moderate positive correlation between the amount of litres of pure alcohol consumption and life expectancy in a country** (cor = 0.38), which is statistically significant. On the plot depicting this relationship we can observe the moderate uphill slope with positive linear relationship between the variables.
+
+Lastly, we'll investigate the relationship of the `Life expectancy` and `GDP` variables.
+
+```{r, message=FALSE}
+cor.test(data$Life.expectancy, data$GDP)
+
+ggplot(data, aes(x = GDP, y = Life.expectancy)) +
+  geom_point(alpha=0.5, position = "jitter") +  theme_bw() +
+  geom_smooth(method = lm)
+```
+
+According to the correlation test, there is **statistically significant moderate positive relationship between the GDP per capita and life expectancy** (0.46). On the plot depicting this relationship we can observe the moderate uphill slope showing positive linear relationship between the variables.
+
+# 4. Linear regression analysis
+
+## 4.1 Identifying the best linear model
+
+In this part we will examine the relationships between our dependent variable and independent ones by creating linear models. With their help we can estimate which of the chosen independent variables have the strongest influence on the outcome variable. 
+
+First, let's predict life expectancy by total expenditure on health, having GDP controlling for it:  
+
+```{r}
+m1 <- lm(Life.expectancy ~ GDP + Total.expenditure, data)
+sjPlot::tab_model(m1)
+```
+
+
+* **Interpretation of the model 1**:
+  
+   + All independent variables have a statistically significantly relation to the life expectancy.
+   + Intercept: if the country has 0$ GDP and 0% Total expenditure, its life expectancy will be 64.29 years.
+   + `GDP` is positively related to the life expectancy: we associate an increase in 1000$ in GDP per capita with an increase in 0.3 years of life expectancy. 
+   + `Total expenditure` is also positively related to the life expectancy: we associate an increase in 1% in total expenditure on health with an increase in 0.47 years of life expectancy, having GDP as constant. 
+   + The model explains 22,6% of the variance, based on adjusted R-squared, which is a pretty good result.
+
+Now let us add standardized regression coefficients to our linear-model-objects for discovering the most influential variable(s).
+
+```{r}
+lm.beta::lm.beta(m1)
+```
+
+Looking at the lm.beta results, we can see that `GDP` is the variable that most influences Life expectancy in our model (SC = 0.45), and the second place here goes to total health expenditure - it has a SC = 0.12.
+
+
+The second model would be created by adding another predictor - `Status`.
+
+```{r}
+m2 <- lm(Life.expectancy ~ GDP + Total.expenditure + Status, data)
+sjPlot::tab_model(m2)
+```
+
+
+* **Interpretation of the model 2**:
+
+   + All independent variables have a statistically significantly relation to the life expectancy.
+   + Intercept: if the country has 0$ GDP, 0% Total expenditure and is a developed country, its life expectancy will be 73.46 years.
+   + `GDP` as a control variable is positively related to the life expectancy: we associate an increase in 1000$ in GDP per capita with an increase in 0.2 years of life expectancy. 
+   + `Total expenditure` is also positively related to the life expectancy: we associate an increase in 1% in total expenditure on health with an increase in 0.2 years of life expectancy, controlling for GDP. 
+   + `Status` "developing" has lower life expectancy compared to status "developed": for a developing country life expectancy is lower by 8.35 years on average compared to developed country status, having GDP as constant.
+   + The model explains 30,6% of the variance, based on adjusted R-squared, that is better than it was in the previous model.
+
+```{r}
+lm.beta::lm.beta(m2)
+```
+
+For the model 2, `Status` appeared to be the most influential predictor - Developing Status has SC = -0.33, next is `GDP` (SC = 0.29), and the least impactful feature is `Total expenditure` (SC = 0.05).
+
+Now let’s use the `anova()` function to compare the first and the second models and see which one provides the best parsimonious fit of the data:
+
+```{r} 
+anova(m1, m2)
+```
+
+As those two models differ in the use of the `Status` predictor variables (both models use `Total expenditure` along with the control variable), this ANOVA will test whether or not including this IV leads to a significant improvement over using just the `Total expenditure` IV. 
+
+So, we observe in the table that with addition of `Status` as a predictor, our model has addition of 1 degree of freedom, which is statistically significant (p-value < 0), meaning that this variable significantly enhanced the model and we should stick to the model 2 for obtaining better results.
+
+
+For creation of the next linear model, we have added another variable - `Schooling` to the second one.
+
+```{r}
+m3 <- lm(Life.expectancy ~ GDP + Total.expenditure + Status + Schooling, data)
+sjPlot::tab_model(m3)
+```
+
+
+* **Interpretation of the model 3**:
+
+   + All independent variables have a statistically significantly relation to the life expectancy.
+   + Intercept: if the country has 0$ GDP, 0% Total expenditure, is a developed country and has 0 years of schooling, its life expectancy will be 48.83 years.
+   + `GDP` as a control variable is positively related to the life expectancy: we associate an increase in 1000$ in GDP per capita with an increase in 0.09 years of life expectancy. 
+   + `Total expenditure` is now negatively related to the life expectancy: we associate an increase in 1% in total expenditure on health with a decrease in 0.14 years of life expectancy, with GDP as a constant parameter. 
+   + `Status` "developing" has lower life expectancy compared to status "developed": for a developing country life expectancy is lower by 2.26 years on average compared to developed country status, having GDP as constant. 
+   + `Schooling` is positively related to the life expectancy: we associate an increase in 1 year of schooling with an increase in 1.86 years of life expectancy, adjusting for other variables.
+   + The model explains 58,2% of the variance, based on adjusted R-squared, that is better than the previous model did.
+
+```{r}
+lm.beta::lm.beta(m3)
+```
+
+For the model 3, the feature variable which accomplished predicting life expectancy the best was `Schooling` - it had the winning size of Standardized Coefficients = 0.65, the second most impactful IV was `GDP` (0.13), then `Status(Developing)` with SC = -0.09, and `Total expenditure` (-0.04).
+
+Moreover, although we have seen that adjusted R-squared became higher in the model 3 compared to the second one, let us also implement ANOVA test to check whether addition of the new predictor enhances the model.
+
+```{r} 
+anova(m2, m3)
+```
+Here, we see that addition of `Schooling` as new predictor have given our model an addition of 1 degree of freedom and reduced the residual sum of squares (RSS), having this result statistically significant (p-value < 0). Therefore, the model 3 predicts our data better than the 2nd one.
+
+
+Lastly, the fourth nested model we created contains all the predictor variables at ones, by adding the `Alcohol` predictor to the previous one.
+
+```{r}
+m4 <- lm(Life.expectancy ~ GDP + Total.expenditure + Status + Schooling + Alcohol, data)
+sjPlot::tab_model(m4)
+```
+
+
+* **Interpretation of the model 4**:
+
+   + All independent variables, except for total expenditure, have a statistically significantly relation to the life expectancy.
+   + Intercept: if the country has 0$ GDP, is a developed country, has 0 years of schooling and has 0 liters alcohol consumption per capita, its life expectancy will be 49.53 years.
+   + `GDP` as a control variable is positively related to the life expectancy: we associate an increase in 1000$ in GDP per capita with an increase in 0.09 years of life expectancy. 
+   + `Total expenditure` is now not related at all to the life expectancy due to high p-value, adjusting for other variables. 
+   + `Status` "developing" still has lower life expectancy compared to status "developed": for a developing country life expectancy is lower by 3.44 years on average compared to developed country status, having GDP as constant. 
+   + `Schooling` is positively related to the life expectancy: we associate an increase in 1 year of schooling with an increase in 1.97 years of life expectancy, controlling for GDP. 
+   + `Alcohol` is negatively related to the life expectancy: we associate an increase in 1 liter of pure alcohol consumption per capita with a decrease in 0.28 years of the life expectancy, adjusting for other variables. 
+   + The model explains 59% of the variance, based on adjusted R-squared, that is slightly better than in the previous model.
+
+```{r}
+lm.beta::lm.beta(m4)
+```
+
+According to the standardized regression coefficients in *lm.beta* function, `Schooling` impacts one's life expectancy the most powerfully (SC = 0.69), a bit smaller coefficient has `Status(Developing)` (SC = -0.14), then the `GDP` with SC = 0.13, `Alcohol` (SC = -0.12), and `Total expenditure` (SC = -0.02) closes the chain.
+
+Finally, let us compare the last two linear regression models and reveal the best one for our analysis:
+
+```{r} 
+anova(m3, m4)
+```
+
+ANOVA test shows that adding `Alcohol` predictor to the combination of variables in the model 3 gives us +1 degree of freedom and reduces the RSS, which is statistically significant (p < 0). Thus, this variable significantly improved results of the model and we should definitely stick to the model 4 for further analysis.
+
+
+## 4.2 Adding interaction effects to the best linear model
+
+We are going to add interaction effect to model 4, however, we decided to remove the predictor `Total.expenditure` as it had no statistically significant relationship to the dependent variable in model 4 and according to lm.beta tests was the least impactful among all models.
+
+Thus, we create the fifth model with all predictors except for the `Total.expenditure`.
+
+```{r}
+m5 <- lm(Life.expectancy ~ GDP + Status + Schooling + Alcohol, data)
+sjPlot::tab_model(m5)
+```
+
+All predictors have a statistically significant relation to life expectancy. Estimates of all predictors remain virtually unchanged compared to model 4. The model explains 59% of variance according to adjusted R^2 which is the same as for model 4.
+
+In our literature review we suggested various interaction effects. The ones that include the predictors in the final linear model are the following:
+
+1. **The relationship of Status and Life expectancy is moderated by Schooling**.
+
+2. **The relationship of Schooling and Life expectancy is moderated by Alcohol**.
+
+3. **The relationship of GDP and Life expectancy is moderated by Status**.
+
+
+For the first interaction model we will include an interaction effect between `Status` and `Schooling`.
+
+```{r}
+m5_1 <- lm(Life.expectancy ~ GDP + Alcohol + Status * Schooling, data)
+sjPlot::tab_model(m5_1)
+```
+
+
+* **Interpretation of the interaction model 1**:
+
+   + All independent variables have a statistically significant relation to the life expectancy, which remained the same as in the original model.
+   + Interaction effect: for developing countries the effect of schooling on life expectancy is bigger by 1.43 years compared to developed countries.
+   + The model explains 60% of the variance, based on adjusted R-squared, that is slightly better than in the non-interaction model.
+
+```{r}
+set_theme(base = theme_bw())
+sjPlot::plot_model(m5_1, type="pred", terms = c("Schooling", "Status")) 
+```
+
+The plot demonstrates the same results as the estimates: the slope of the schooling relationship to life expectancy is strong for developing countries while being moderate for developed countries. Thus, increase by 1 year of schooling has a stronger effect on life expectancy in developing countries compared to developed ones.
+
+Now let us add standardized regression coefficients to our linear-model-objects for discovering the most influential variable(s).
+
+```{r}
+lm.beta::lm.beta(m5_1)
+```
+
+Looking at the lm.beta results, we can see that `Status(Developing)` is the variable that most influences Life expectancy in our model (SC = -1.02), second most influential is `Status(Developing):Schooling` (SC = 0.75), third - `Schooling` (SC = 0.22), fourth - `GDP` (SC = 0.14), and the least influential is `Alcohol` (SC = -0.137).
+
+Now, let us compare the best linear regression and the first interaction model:
+
+```{r}
+anova(m5, m5_1)
+```
+
+ANOVA test shows that adding interaction effect between `Status` and `Schooling` to the combination of variables gives us +1 degree of freedom and reduces the RSS, which is statistically significant (p < 0). Thus, interaction effect significantly improved results of the model.
+
+For the second interaction model we will include an interaction effect between `Schooling` and `Alcohol`.
+
+```{r}
+m5_2 <- lm(Life.expectancy ~ GDP + Status + Schooling * Alcohol, data)
+sjPlot::tab_model(m5_2)
+```
+
+* **Interpretation of the interaction model 2**:
+
+   + All independent variables, except for interaction effect, have a statistically significantly relation to the life expectancy. 
+   + Interaction effect is not statistically significant as the p-value is too large (0.741). It means that although number of schooling years in a country and the amount of alcohol consumption statistically significantly can predict life expectancy, the effect of schooling on life expectancy DOES NOT depend on the alcohol consumption, and vise versa.
+   + The model explains 59% of the variance, based on adjusted R-squared, that is the same as in the non-interaction model, but slightly worse than in the interaction model 1.
+
+```{r}
+set_theme(base = theme_bw())
+sjPlot::plot_model(m5_2, type="pred", terms = c("Alcohol", "Schooling")) 
+```
+
+The plot shows the same story as estimates: the slopes do not intersect and thus there is no interaction effect between the variables.
+
+```{r}
+lm.beta::lm.beta(m5_2)
+```
+
+Looking at the lm.beta results, we can see that `Schooling` is the variable that most influences Life expectancy in our model (SC = 0.68), second most influential is `Alcohol` (SC = -0.14), third - `Status(Developing)` (SC = -0.132), fourth - `GDP` (SC = 0.131), and the least influential is `Schooling:Alcohol` (SC = 0.03).
+
+Now, let us compare the best linear regression and the second interaction model:
+
+```{r}
+anova(m5, m5_2)
+```
+
+ANOVA test shows that adding interaction effect between `Alcohol` and `Schooling` to the combination of variables gives us +1 degree of freedom and reduces the RSS only slightly, which is not statistically significant (p = 0.74). Thus, this interaction effect did not significantly improve results of the model.
+
+For the third interaction model we will include an interaction effect between `GDP` and `Status`.
+
+```{r}
+m5_3 <- lm(Life.expectancy ~ Schooling + Alcohol + GDP * Status, data)
+sjPlot::tab_model(m5_3)
+```
+
+* **Interpretation of the interaction model 3**:
+
+   + All independent variables have a statistically significant relation to the life expectancy.
+   + Interaction effect: for developing countries the effect of GDP on life expectancy is bigger by 0.14 years compared to developed countries.
+   + The model explains 59.6% of the variance, based on adjusted R-squared, that is almost the same as in the non-interaction model and previous interaction models.
+
+```{r}
+set_theme(base = theme_bw())
+sjPlot::plot_model(m5_3, type="pred", terms = c("GDP", "Status")) 
+```
+
+The plot demonstrates the same results as the estimates: the slope of the GDP relationship to life expectancy is strong for developing countries while being moderate for developed countries. Thus, increase in GDP has a stronger effect on life expectancy in developing countries compared to developed ones.
+
+```{r}
+lm.beta::lm.beta(m5_3)
+```
+
+Looking at the lm.beta results, we can see that `Schooling` is the variable that most influences Life expectancy in our model (SC = 0.66), second most influential is `Status(Developing)` (SC = -0.21), third - `Alcohol` (SC = -0.13), fourth - `GDP:Status(Developing)` (SC = 0.11), and the least influential is `GDP` (SC = 0.06).
+
+Now, let us compare the best linear regression and the third interaction model:
+
+```{r}
+anova(m5, m5_3)
+```
+
+ANOVA test shows that adding interaction effect between `Status` and `GDP` to the combination of variables gives us +1 degree of freedom and reduces the RSS, which is statistically significant (p < 0). Thus, interaction effect significantly improved results of model.
+
+Finally, we need to choose the best interaction model for further analysis. For this we compare the best non-interaction model with interaction models 1 and 3 using ANOVA.
+
+```{r}
+anova(m5, m5_1, m5_3)
+```
+
+ANOVA test shows that adding interaction effect between `Status` and `Schooling` to the combination of variables gives us +1 degree of freedom and reduces the RSS, which is statistically significant (p < 0). Thus, interaction effect significantly improved results of model. As for adding interaction effect between `Status` and `GDP`, it gives us +0 degree of freedom and reduces the RSS, but not as much as in the case of interaction model 1 and the results for this interaction model are not statistically significant.
+
+It can also be noted that in interaction model 1 the interaction effect was second most influential predictor while in interaction model 3 the interaction effect was one of least influential predictors. Furthermore, interaction model 1 has higher R^2 than interaction model 3. This suggests that the interaction model 1 is better than interaction model 3.
+
+Therefore, we will use interaction model 1 (interaction effect between `Status` and `Schooling`) for further analysis.
+
+# 5. OLS diagnostics
+
+In this section of our analysis we will perform the diagnostics of the best chosen model in order to find out if it works the best way or needs additional antidotes for results enhancing. For it, we are going to check if our best model with an interaction effect meets different assumptions.
+
+## 5.1 Normal distribution of residuals
+
+In order to take care of outliers, we should consider residuals and their distribution.
+
+After the visualization we'll perform some tests in order to be sure in our conclusions.
+
+```{r}
+hist(m5_1$residuals, breaks = 20, main = paste("Histogram of the model's residuals"), col = "steelblue3")
+```
+
+At the histogram presented above we can see that our residuals distribution is quite weird - it does not look quite normal. Though, let us check the normality with the help of the Q-Q Plot function for the more precise conclusions.
+
+```{r, warning=FALSE}
+qqPlot(m5_1, main="Q-Q Plot")
+```
+
+Our **residuals do not follow normal distribution**, as the observations are not staying within the confidence intervals. Moreover, we can see that the whiskers are rather far from the blue line that is why we'll need to fix it.
+
+However, we are going to test this distribution further with the help of the Bonferroni Outlier Test, which shows the most extreme observations based on a given model (knowing that Bonferroni p value should be > 0.05 or NA to have no outliers). 
+
+```{r}
+outlierTest(m5_1)
+```
+
+As we can see, **we have some extreme outliers, which have Bonferroni p lower than 0.05, therefore, we should fix this further**.
+
+Next we are going to do the Anderson-Darling normality test which has the null hypothesis of a normal distribution, in order to make sure that the residuals' distribution is non-normal.
+
+```{r}
+ad.test(m5_1$residuals)
+```
+
+As our p-value is lower than 0.05, we can reject the null hypothesis and **conclude that the residuals of the model aren't normally distributed**.
+
+## 5.2 Outliers - leverages
+
+An outlier (leverage) is a data point whose response `y` does not follow the general trend of the rest of the data, and the presence of outliers may affect the interpretation of the model, because it increases the RSE.
+
+First, let's plot the most influential observations (hat values) and add critical lines, that will help us identify which observations are problematic. 
+
+```{r}
+# Critical line formula: (2 or 3)*((k+1)/n), where k - number of IVs (number of beta-coefficients), n - sample size
+plot(hatvalues(m5_1))
+abline(h=c(2,3)*7/2323,lty=2, col = "red")
+text(hatvalues(m5_1), cex = 0.3)
+```
+We can see that there are a few outliers both above the first and the second red lines, meaning that **we have some outliers different from the common observations' distribution pattern**.
+
+Investigating the leverages further, we'll apply Cook's distance test, estimating how much the predicted values change (with high values indicating that an observation is influential and may cause problems). The plot for this test also includes the line, showing which values are critical and which are normal.
+
+```{r}
+# Critical line formula: 4/(n-k-1), where k - number of IVs (number of beta-coefficients), n - sample size
+plot(cooks.distance(m5_1))
+abline(h=4/(2323-6-1), lty=2, col = "red")
+text(cooks.distance(m5_1), cex = 0.5)
+```
+
+On this plot the higher is an observation above the red line, the more influential and problematic it is. So, here we observe that observations 72, 76, 73, 287, 1428, 1429 are the worst ones, being higher than others on the visualization. What is important, is that they are **the same observations that we have previously seen in the Bonferroni Outlier Test**, which confirms the need of these rows being omitted to make our model better both in terms of residuals distribution and outliers non-existence.
+
+## 5.3 Linearity
+
+Firstly, we can check the assumption about linearity by inspecting the Residuals vs Fitted plot, which gives an indication if there are non-linear patterns.
+
+```{r}
+plot(m5_1, which=1, col=c("blue"))
+```
+
+As we can see the red line is almost completely matched with the dotted line, therefore **we assume a good linearity of our data in the model**.
+
+Let us also observe profile log-likelihoods for the parameter of the Box-Cox power transformation and understand if we need to do the dependent variable transformation:
+
+```{r, message=FALSE}
+boxcox(m5_1)
+```
+
+On this plot we may notice that the **lambda is closer to the value of 2 meaning that we need to square the dependent variable of our model**.
+
+## 5.4 Homoscedasticity
+
+Next, we suppose that there should be no non-constant error variance (heteroscedasticity) - which is a situation when the standard deviations of a predicted variable are non-constant.
+
+We'll firstly plot residuals vs predicted values in order to see if we have heteroscedasticity in our model:
+
+```{r}
+par(mfrow = c(1, 2))
+plot(fitted.values(m5_1), rstudent(m5_1))
+abline(h=0, lty=2) 
+spreadLevelPlot(m5_1) #blue line should be horizontal
+```
+
+On the the right plot the dotted blue line is not horizontal, which identifies that probably there is non-constant error variance (heteroscedasticity) in our data.
+
+Let us check this result with the Breusch-Pagan formal test:
+
+```{r}
+car::ncvTest(m5_1)
+```
+
+The results of the test confirm our previous findings, as here our p-value is lower than 0.05, thus, the null hypothesis about homoscedasticity is rejected which is why **we have heteroscedasticity in the model**. And if our OLS model demonstrates high level of heterosсedasticity (i.e. when the error term of our model is not randomly distributed across observations and there is a discernible pattern in the error variance), we run into problems. So, we are going to fix them later.
+
+## 5.5 Multicolinearity
+
+As the model has interaction effect, there is no need for checking if there is multicolinearity between the variables being in moderation of one another. So, doing the test on no-multicolinearity assumption, we should only look at the predictors which have no interaction effect between them.
+
+Let's check multicolinearity in our model, bearing these conclusions in mind:
+
+```{r}
+car::vif(m5_1)
+```
+
+**There is no multicolinearity of the GDP and the Alcohol variables**, which are the ones not included in interaction effect. In case of the Status, Schooling and Status:Schooling variables, the VIF value is bigger than 4, therefore, we have multicolinearity here which is explained by the interaction effect between these features.
+
+## 5.6 Adjusting the model according to the diagnostics
+
+During the diagnostic process there were **found some problems in our model**:
+
+* It does not follow a normal distribution of residuals.
+
+* Has several extreme outliers.
+
+* According to Boxcox test, we may consider squaring the dependent variable of our model.
+
+* There is heteroscedasticity in the model.
+
+To fix the first and the third issues we should consider the same solution - quadratic transformation of the dependent variable, as the QQ-plot with the studentized residuals from a linear model has the down-sided whiskers and Boxcox test's lambda value equals 2.
+
+```{r}
+m5_1.1 <- lm((Life.expectancy)^2 ~ GDP + Alcohol + Status * Schooling, data)
+sjPlot::tab_model(m5_1.1)
+sjPlot::tab_model(m5_1)
+```
+
+Now let us compare the QQ-plots for the initial model and the one after transformation, and look at changes in the linear models' adjusted R^2:
+
+```{r, message=FALSE}
+par(mfrow = c(1, 2))
+car::qqPlot(m5_1, main="Q-Q Plot")
+car::qqPlot(m5_1.1, main="Q-Q Plot")
+
+stargazer::stargazer(m5_1, m5_1.1, type = 'text')
+```
+
+Comparing the two QQ-plots, where the left visualization corresponds to the initial model, on the right - to the transformed one, we may conclude that **the distribution of residuals became more normal**, because now observations primarily lie within the confidence intervals. Moreover, comparing the ability of predicting the outcome, it is seen that the transformed model could be slightly better in it, as it explains about 63% of the variance, based on adjusted R-squared, while the other model only 60%. Thus, we should stick to the model with quadratic transformation of the DV.
+
+Now let us check if the transformation done to the dependent variable contributed to the problem of existing extreme outliers. For that we're going to implement Bonferroni Outlier Test.
+
+```{r}
+par(mfrow = c(1, 2))
+outlierTest(m5_1)
+outlierTest(m5_1.1)
+```
+
+However, as we can see, there are the same observations with Bonferroni p value should be < 0.05 in both models, therefore these 10 extreme outliers should be deleted. Moreover, we should also get rid of the observations, revealed on the plot of Cook's distance test (it is repeatedly visualised below).
+
+```{r}
+# Critical line formula: 4/(n-k-1), where k - number of IVs (number of beta-coefficients), n - sample size
+plot(cooks.distance(m5_1.1))
+abline(h=4/(2323-6-1), lty=2, col = "red")
+text(cooks.distance(m5_1), cex = 0.4)
+```
+Let's delete these outliers.
+
+```{r}
+data_new = data[-c(72, 287, 73, 76, 75, 74, 77, 1428, 1430, 1429, 2203, 2113, 118, 677, 755, 1259, 1254, 919, 1717, 2217, 118, 211, 608, 2217, 757, 1412, 744, 782, 1507, 1568, 1891, 1943, 967, 205, 1407, 1406, 742, 779, 1500, 1933, 1403, 1402, 741, 777, 1495, 1877, 1555, 205, 1398, 739, 774, 948, 1870, 1920, 1490, 1143, 2179, 1394), ]
+dim(data)
+dim(data_new)
+```
+
+After omitting the identified observations, there are 2268 observations left. Now we are going to check if this procedure improved our model results or not.
+
+```{r, warning==FALSE}
+m5_1.2 <- lm((Life.expectancy)^2 ~ GDP + Alcohol + Status * Schooling, data_new)
+
+stargazer::stargazer(m5_1, m5_1.1, m5_1.2, type = 'text')
+```
+
+In the table we can see the comparison of our three models: the left one is the initial model (the best with interactive effect), on the middle -  model with quadratic transformation of DV, the right one - model with both quadratic transformation of DV and omitting the outliers. Therefore, as the 3rd model explains variance the best - about 68% - which is higher than other models, we will adhere to it.
+
+And the last problem which we should take care of is heteroscedasticity of the data. 
+
+This problem could be resolved with transforming the outcome variable. And as we have already gained the results of squaring the DV, let us now try implementing log transformation to it for comparison of models' results.
+
+```{r}
+m5_1.3 <- lm(log(Life.expectancy) ~ GDP + Alcohol + Status * Schooling, data_new)
+
+stargazer::stargazer(m5_1.2, m5_1.3, type = 'text')
+```
+
+We observe that the transformation of the outcome variable by using a quadratic transformation gives us the model which predicts results the best (explains 68% of variance), compared to the model with log transformation of the DV (explains 62% of variance). Therefore, we will not apply log transformation to our final fixed model.
+
+# 6. Final fixed model
+
+At last, our best-working model is the best one with interaction effect, that had such adjustments as the quadratic transformation of the outcome variable and deleted outliers.
+
+```{r}
+sjPlot::tab_model(m5_1.2)
+```
+
+
+* **Interpretation of the final fixed model:**
+
+   + All independent variables have a statistically significant relation to the squared life expectancy.
+   + `GDP` as a control variable is positively related to the squared life expectancy: we associate an increase in 1000$ in GDP per capita with an increase in 12.83 years of squared life expectancy. 
+   + `Alcohol` is negatively related to the squared life expectancy: we associate an increase in 1 liter of pure alcohol consumption per capita with a decrease in 53.28 years of the squared life expectancy, adjusting for other variables.
+   + `Status` for developing countries has lower squared life expectancy compared to status "developed": for a developing country squared life expectancy is lower by 3707 years on average, compared to developed country status, having GDP as constant. 
+   + `Schooling` for developed countries is positively related to the squared life expectancy: we associate an increase in 1 year of schooling with an increase in 100.38 years of squared life expectancy, controlling for GDP. 
+   + Interaction effect: for developing countries the effect of schooling on squared life expectancy is bigger by 206.95 years compared to developed countries.
+   + The model explains 68% of the variance, based on adjusted R-squared, which is the best result we had during our analysis.
+   
+# 7. Conclusion
+
+In the beginning of our project we set some research questions and a number of hypotheses. Let us see whether they were supported and discuss overall results.
+
+**Hypotheses for the predictors-outcome relationship:**
+
+   + *H1: The countries with Status “Developed” will have higher Life expectancy compared to countries with Status “Developing”.* - This hypothesis was supported across all models with this predictor.
+
+   + *H2: The relationship of Total expenditure and Life expectancy will be positive and moderate.* - This hypothesis was partially supported: the relationship was positive, but the predictor was either the least impactful or not statistically significant at all.
+
+   + *H3: The relationship of Schooling and Life expectancy will be positive and strong.* - This hypothesis was supported across all models with this predictor.
+
+   + *H4: The relationship of Alcohol and Life expectancy will be negative and moderate.* - This hypothesis was supported across all models with this predictor.
+
+**Hypotheses for the interaction effect:**
+
+   + *H5: The relationship of Status and Life expectancy is moderated by Schooling.* - This hypothesis was supported.
+
+   + *H6: The relationship of Total expenditure and Life expectancy is moderated by GDP.* - This hypothesis could not be checked as Total expenditure was either the least impactful or not significant at all and thus was not used in interaction.
+
+   + *H7: The relationship of Schooling and Life expectancy is moderated by Alcohol.* - This hypothesis was refuted as the interaction effect was not statistically significant.
+
+   + *H8: The relationship of GDP and Life expectancy is moderated by Status.* - This hypothesis was supported, even though we decided not to use this interaction for diagnostics - another interaction model had more explanatory power.
+
+   + *H9: The relationship of Total expenditure and Life expectancy is moderated by Status.* - This hypothesis could not be checked as Total expenditure was either the least impactful or not statistically significant at all and thus was not used in interaction.
+   
+**Explanatory power:**
+
+The best linear model with no interaction effect explained 59% of the variance and included `GDP`, `Status`, `Schooling` and `Alcohol` as predictors. The best interaction model explained 60% of the variance and included interaction effect between `Status` and `Schooling`. After we performed diagnostics, we squared the outcome variable and deleted outliers - the final model explained 68% of the variance and included the predictors and interaction effect mentioned above.
+
+**Final thoughts:**
+
+Overall, we can answer our RQs in the following way.
+
+The socio-economic factors explaining life expectancy of a country are GDP per capita, years of schooling, alcohol consumption per capita and development status. GDP per capita and years of schooling are positively related to life expectancy, while alcohol consumption per capita is negatively related. Development status is related in a way that developing countries tend to have lower life expectancy than developed ones.
+
+Development status also moderates the relationship of life expectancy to years schooling and to GDP per capita. The relationship of life expectancy to years of schooling and GDP per capita will be stronger for developing countries compared to developed ones. 
+
+# Literature resources
+
+1. Girum, T., Muktar, E.,  & Shegaze, M. (2018). Determinants of life expectancy in low and medium human development index countries. Medical Studies/Studia Medyczne, 34(3), 218-225. <https://doi.org/10.5114/ms.2018.78685>
+
+2. Chen, Z., Ma, Y., Hua, J., Wang, Y., & Guo, H. (2021). Impacts from Economic Development and Environmental Factors on Life Expectancy: A Comparative Study Based on Data from Both Developed and Developing Countries from 2004 to 2016. International Journal of Environmental Research and Public Health, 18(16), 8559. MDPI AG. Retrieved from <http://dx.doi.org/10.3390/ijerph18168559>
+
+3. Miladinov, G. (2020) Socioeconomic development and life expectancy relationship: evidence from the EU accession candidate countries. Genus 76, 2. <https://doi.org/10.1186/s41118-019-0071-0>
+
+4. Rogers, R., & Wofford, S. (1989). Life expectancy in less developed countries: Socioeconomic development or public health? Journal of Biosocial Science, 21(2), 245-252. <https://www.cambridge.org/core/journals/journal-of-biosocial-science/article/abs/life-expectancy-in-less-developed-countries-socioeconomic-development-or-public-health/5FE3C21D3A62A013133C5936DDDFF2F5>
+
+5. Mihajlo B. Jakovljevic, Mira Vukovic & John Fontanesi (2016) Life expectancy and health expenditure evolution in Eastern Europe—DiD and DEA analysis, Expert Review of Pharmacoeconomics & Outcomes Research, 16:4, 537-546, DOI: <https://doi.org/10.1586/14737167.2016.1125293> 
+
+6. Wim J.A. van den Heuvel, Marinela Olaroiu (2016) How Important Are Health Care Expenditures for Life Expectancy? A Comparative, European Analysis, Journal of the American Medical Directors Association, Volume 18, Issue 3, Pages 276.e9-276.e12, ISSN 1525-8610, <https://doi.org/10.1016/j.jamda.2016.11.027> 
+
+7. Zaman, S. B., Hossain, N., Mehta, V., Sharmin, S., & Mahmood, S. A. I. (2017). An Association of Total Health Expenditure with GDP and Life Expectancy. Journal of Medical Research and Innovation, 1(2), AU7-AU12. <https://doi.org/10.15419/jmri.72>
+
+8. Cruz A. Echevarría (2007) Life Expectancy, Schooling Time, Retirement, and Growth, Economic Inquiry, Volume 42, issue 4, pp. 602-617, <https://doi.org/10.1093/ei/cbh084>
+
+9. Hazan, M. (2012) Life expectancy and schooling: new insights from cross-country data. J Popul Econ 25, 1237–1248. <https://doi.org/10.1007/s00148-011-0392-6>
+
+10. Anica Novak, Žiga Čepar, and Aleš Trunk (2016) The role of expected years of schooling among life expectancy determinants, International Journal of Innovation and Learning 20:1, 85-99, <https://www.inderscienceonline.com/doi/abs/10.1504/IJIL.2016.076673>
+
+11. Mondal, M. N., & Shitan, M. (2013). Impact of Socio-Health Factors on Life Expectancy in the Low and Lower Middle Income Countries. Iranian journal of public health, 42(12), 1354–1362. <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4441932/>  
+
+12. Kim, J.I., Kim, G. (2016) Country-Level Socioeconomic Indicators Associated with Healthy Life Expectancy: Income, Urbanization, Schooling, and Internet Users: 2000–2012. Soc Indic Res 129, 391–402. <https://doi.org/10.1007/s11205-015-1107-2>
+
+13. Östergren O, Martikainen P, Tarkiainen L, et al (2019) Contribution of smoking and alcohol consumption to income differences in life expectancy: evidence using Danish, Finnish, Norwegian and Swedish register dataJ Epidemiol Community Health;73:334-339. <https://jech.bmj.com/content/73/4/334.abstract>
+
+14. Östergren, O., Martikainen, P. & Lundberg, O. (2018) The contribution of alcohol consumption and smoking to educational inequalities in life expectancy among Swedish men and women during 1991–2008. Int J Public Health 63, 41–48. <https://doi.org/10.1007/s00038-017-1029-7>
+
+15. Kossova, Tatiana, Kossova, Elena and Sheluntsova, Maria (2017) Estimating the Impact of Alcohol Consumption on Mortality and Life Expectancy in Russian Regions, Economic Policy, 1, issue , p. 58-83, <https://EconPapers.repec.org/RePEc:rnp:ecopol:ep1703> 
